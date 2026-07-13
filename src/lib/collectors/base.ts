@@ -9,13 +9,35 @@ export interface CrawledProduct {
   source_id: string;
   source_url: string;
   brand: string | null;
+  // 店铺信息
   shop_name: string | null;
+  shop_url: string | null;
+  is_official: boolean;
+  sales_count: number;
 }
 
 export abstract class BaseCollector {
   abstract platform: Platform;
 
   abstract search(keyword: string, page?: number): Promise<CrawledProduct[]>;
+
+  protected parseSalesCount(text: string): number {
+    if (!text) return 0;
+    const clean = text.replace(/[^0-9.万+]/g, '');
+    if (clean.includes('万')) {
+      return Math.round(parseFloat(clean) * 10000);
+    }
+    return parseInt(clean) || 0;
+  }
+
+  protected isOfficialShop(shopName: string | null): boolean {
+    if (!shopName) return false;
+    const officialKeywords = [
+      '官方旗舰店', '自营', '直营', '官方', '旗舰',
+      'Apple', '华为', '小米', 'OPPO', 'vivo',
+    ];
+    return officialKeywords.some((k) => shopName.includes(k));
+  }
 
   protected async fetchWithRetry(
     url: string,

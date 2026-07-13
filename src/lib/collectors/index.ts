@@ -2,18 +2,18 @@ import { Platform } from '@/types';
 import { BaseCollector, CrawledProduct } from './base';
 import { JDCollector } from './jd';
 import { TaobaoCollector } from './taobao';
+import { PDDCollector } from './pdd';
 
 const collectors: Record<Platform, BaseCollector> = {
   jd: new JDCollector(),
   taobao: new TaobaoCollector(),
-  tmall: new TaobaoCollector(), // 天猫和淘宝共用
-  pdd: new JDCollector(), // TODO: 拼多多采集器
-  suning: new JDCollector(), // TODO: 苏宁采集器
+  tmall: new TaobaoCollector(),
+  pdd: new PDDCollector(),
 };
 
 export async function searchAllPlatforms(
   keyword: string,
-  platforms: Platform[] = ['jd', 'taobao']
+  platforms: Platform[] = ['jd', 'taobao', 'pdd']
 ): Promise<Map<Platform, CrawledProduct[]>> {
   const results = new Map<Platform, CrawledProduct[]>();
 

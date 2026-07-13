@@ -8,6 +8,12 @@ export interface Product {
   source_platform: Platform;
   source_id: string;
   source_url: string | null;
+  // 店铺信息
+  shop_name: string | null;
+  shop_url: string | null;
+  is_official: boolean;
+  sales_count: number;
+  // 价格信息
   current_price: number | null;
   original_price: number | null;
   coupon_price: number | null;
@@ -18,16 +24,19 @@ export interface Product {
   updated_at: string;
 }
 
-export type Platform = 'jd' | 'taobao' | 'tmall' | 'pdd' | 'suning';
+export type Platform = 'jd' | 'taobao' | 'tmall' | 'pdd';
 
-export interface PlatformPrice {
-  platform: Platform;
-  platform_name: string;
-  price: number;
-  original_price: number | null;
-  coupon_price: number | null;
-  url: string;
-  lowest_price_30d: number | null;
+export interface PlatformShops {
+  official: Product[];
+  others: Product[];
+}
+
+export interface MatchGroup {
+  spu_key: string;
+  title: string;
+  image_url: string | null;
+  platforms: Record<Platform, PlatformShops>;
+  best_price: Product;
 }
 
 export interface PriceHistory {
@@ -41,7 +50,7 @@ export interface PriceHistory {
 
 export interface SearchResult {
   total: number;
-  items: Product[];
+  items: MatchGroup[];
 }
 
 export interface TrendData {
@@ -54,7 +63,6 @@ export const PLATFORM_NAMES: Record<Platform, string> = {
   taobao: '淘宝',
   tmall: '天猫',
   pdd: '拼多多',
-  suning: '苏宁',
 };
 
 export const PLATFORM_COLORS: Record<Platform, string> = {
@@ -62,5 +70,16 @@ export const PLATFORM_COLORS: Record<Platform, string> = {
   taobao: '#ff5000',
   tmall: '#ff0036',
   pdd: '#e02e24',
-  suning: '#f28b00',
 };
+
+export function isOfficialShop(shopName: string | null, platform: Platform): boolean {
+  if (!shopName) return false;
+  const officialPatterns: Record<Platform, string[]> = {
+    jd: ['京东自营', '京东官方旗舰店', 'Apple产品京东自营'],
+    taobao: ['官方旗舰店', '天猫官方', '品牌直营'],
+    tmall: ['官方旗舰店', '天猫官方', '品牌直营'],
+    pdd: ['官方旗舰店', '品牌直营', '百亿补贴'],
+  };
+  const patterns = officialPatterns[platform] || [];
+  return patterns.some((p) => shopName.includes(p));
+}

@@ -17,36 +17,61 @@ export class JDCollector extends BaseCollector {
 
   private parseHTML(html: string): CrawledProduct[] {
     const products: CrawledProduct[] = [];
-    const itemRegex = /<li class="gl-item"[^>]*>[\s\S]*?<div class="gl-i-wrap">[\s\S]*?<div class="p-img">[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>[\s\S]*?<img[^>]*data-lazy-img="([^"]*)"[^>]*>[\s\S]*?<div class="p-price">[\s\S]*?<strong[^>]*><i>¥<\/i>([\d.]+)<\/strong>/g;
 
-    let match;
-    while ((match = itemRegex.exec(html)) !== null) {
-      const [, url, img, price] = match;
-      const titleMatch = html.substring(match.index).match(/<div class="p-name[^"]*">[\s\S]*?<em>([\s\S]*?)<\/em>/);
+    // 匹配商品块
+    const itemRegex = /<li class="gl-item"[\s\S]*?<\/li>/g;
+    let itemMatch;
 
-      if (price) {
+    while ((itemMatch = itemRegex.exec(html)) !== null) {
+      const item = itemMatch[0];
+
+      // 提取链接
+      const urlMatch = item.match(/href="(https?:\/\/item\.jd\.com\/\d+\.html)"/);
+      const url = urlMatch?.[1] || '';
+
+      // 提取ID
+      const idMatch = url.match(/\/(\d+)\.html/);
+      const sourceId = idMatch?.[1] || '';
+
+      // 提取图片
+      const imgMatch = item.match(/data-lazy-img="([^"]+)"/);
+      const image = imgMatch?.[1] || '';
+
+      // 提取价格
+      const priceMatch = item.match(/<strong[^>]*><i>¥<\/i>([\d.]+)<\/strong>/);
+      const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+
+      // 提取标题
+      const titleMatch = item.match(/<div class="p-name[^"]*">[\s\S]*?<em>([\s\S]*?)<\/em>/);
+      const title = titleMatch?.[1]?.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() || '';
+
+      // 提取店铺名
+      const shopMatch = item.match(/<span class="p-shop[^"]*"[^>]*><a[^>]*>([^<]+)<\/a>/);
+      const shopName = shopMatch?.[1] || null;
+
+      // 提取销量
+      const salesMatch = item.match(/<span class="p-commit[^"]*"><a[^>]*>([^<]+)<\/a>/);
+      const salesText = salesMatch?.[1] || '';
+      const salesCount = this.parseSalesCount(salesText);
+
+      if (price > 0 && sourceId) {
         products.push({
-          title: this.cleanHTML(titleMatch?.[1] || ''),
-          image_url: img ? `https:${img}` : null,
-          price: parseFloat(price),
+          title,
+          image_url: image ? `https:${image}` : null,
+          price,
           original_price: null,
           coupon_price: null,
-          source_id: this.extractId(url),
-          source_url: url.startsWith('http') ? url : `https:${url}`,
+          source_id: sourceId,
+          source_url: url || `https://item.jd.com/${sourceId}.html`,
           brand: null,
-          shop_name: null,
+          shop_name: shopName,
+          shop_url: shopName ? `https://shop.jd.com/` : null,
+          is_official: this.isOfficialShop(shopName),
+          sales_count: salesCount,
         });
       }
     }
+
     return products;
-  }
-
-  private cleanHTML(html: string): string {
-    return html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-  }
-
-  private extractId(url: string): string {
-    const match = url.match(/\/(\d+)\.html/);
-    return match?.[1] || '';
   }
 }

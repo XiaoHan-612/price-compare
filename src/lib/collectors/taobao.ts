@@ -27,6 +27,10 @@ export class TaobaoCollector extends BaseCollector {
       for (const item of items) {
         const price = parseFloat(item.price || item.priceShow?.price || '0');
         if (price > 0) {
+          const shopName = item.shopName || item.nick || null;
+          const salesText = item.sales || item.sellNum || '';
+          const salesCount = this.parseSalesCount(salesText);
+
           products.push({
             title: item.title || item.titleShow || '',
             image_url: item.pic || item.picUrl || null,
@@ -36,7 +40,10 @@ export class TaobaoCollector extends BaseCollector {
             source_id: item.nid || item.itemId || '',
             source_url: `https://item.taobao.com/item.htm?id=${item.nid || item.itemId}`,
             brand: item.brand || null,
-            shop_name: item.shopName || null,
+            shop_name: shopName,
+            shop_url: shopName ? `https://shop${item.shopId || ''}.taobao.com` : null,
+            is_official: this.isOfficialShop(shopName),
+            sales_count: salesCount,
           });
         }
       }

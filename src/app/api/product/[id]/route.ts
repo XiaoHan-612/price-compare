@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { Product, Platform } from '@/types';
 
 export async function GET(
   request: NextRequest,
@@ -30,17 +31,25 @@ export async function GET(
   // 数据库没有则构造模拟数据
   const [platform, ...sourceIdParts] = id.split('_');
   const sourceId = sourceIdParts.join('_');
+  const plat = (platform || 'jd') as Platform;
 
-  const product = {
+  const product: Product = {
     id,
-    title: `商品 ${sourceId}`,
+    title: `示例商品 ${sourceId}`,
     image_url: null,
-    normalized_name: `商品 ${sourceId}`,
-    source_platform: platform || 'jd',
+    normalized_name: `示例商品 ${sourceId}`,
+    source_platform: plat,
     source_id: sourceId,
-    source_url: platform === 'jd'
-      ? `https://item.jd.com/${sourceId}.html`
-      : `https://item.taobao.com/item.htm?id=${sourceId}`,
+    source_url:
+      plat === 'jd'
+        ? `https://item.jd.com/${sourceId}.html`
+        : plat === 'pdd'
+          ? `https://mobile.yangkeduo.com/goods.html?goods_id=${sourceId}`
+          : `https://item.taobao.com/item.htm?id=${sourceId}`,
+    shop_name: '示例店铺',
+    shop_url: null,
+    is_official: true,
+    sales_count: Math.floor(Math.random() * 100000),
     current_price: Math.round(Math.random() * 5000 + 100),
     original_price: Math.round(Math.random() * 8000 + 500),
     coupon_price: null,
@@ -49,6 +58,8 @@ export async function GET(
     brand: null,
     category: null,
     price_update_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 
   // 生成模拟价格历史
