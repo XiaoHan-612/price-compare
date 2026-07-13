@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Card, Tag, Spin, Empty, Input, Typography, Space, Badge } from 'antd';
-import { StarFilled } from '@ant-design/icons';
-import { MatchGroup, Platform, PLATFORM_NAMES, PLATFORM_COLORS, Product } from '@/types';
-
-const { Text } = Typography;
+import { MatchGroup, Platform, PLATFORM_NAMES, Product } from '@/types';
 
 export default function SearchPage() {
   const searchParams = useSearchParams();
@@ -42,43 +38,31 @@ export default function SearchPage() {
     }
   };
 
+  const formatSales = (count: number) => {
+    if (count > 10000) return `${(count / 10000).toFixed(1)}万`;
+    if (count > 1000) return `${(count / 1000).toFixed(1)}千`;
+    return count.toString();
+  };
+
   const renderShopItem = (product: Product, isOfficial: boolean) => (
     <div
       key={product.id}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '8px 12px',
-        background: isOfficial ? '#fffbe6' : '#fafafa',
-        borderRadius: 6,
-        border: isOfficial ? '1px solid #ffe58f' : '1px solid #f0f0f0',
-        marginBottom: 6,
-        cursor: 'pointer',
-      }}
+      className={`shop-item ${isOfficial ? 'official' : ''}`}
       onClick={() => router.push(`/product/${product.id}`)}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {isOfficial && <StarFilled style={{ color: '#faad14', fontSize: 12 }} />}
-          <Text ellipsis style={{ fontSize: 13, fontWeight: isOfficial ? 600 : 400 }}>
-            {product.shop_name || '未知店铺'}
-          </Text>
-        </div>
+      <div className="shop-name">
+        {isOfficial && <span className="star">⭐</span>}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {product.shop_name || '未知店铺'}
+        </span>
         {product.sales_count > 0 && (
-          <Text type="secondary" style={{ fontSize: 11 }}>
-            月销 {product.sales_count > 10000 ? `${(product.sales_count / 10000).toFixed(1)}万` : product.sales_count}
-          </Text>
+          <span className="shop-sales">月销{formatSales(product.sales_count)}</span>
         )}
       </div>
-      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-        <div style={{ color: '#f5222d', fontWeight: 600, fontSize: 15 }}>
-          ¥{product.coupon_price || product.current_price || '--'}
-        </div>
+      <div className="shop-price">
+        <div className="shop-price-main">¥{product.coupon_price || product.current_price || '--'}</div>
         {product.coupon_price && product.current_price && product.current_price > product.coupon_price && (
-          <Text delete type="secondary" style={{ fontSize: 11 }}>
-            ¥{product.current_price}
-          </Text>
+          <div className="shop-price-original">¥{product.current_price}</div>
         )}
       </div>
     </div>
@@ -89,96 +73,92 @@ export default function SearchPage() {
     if (!hasData) return null;
 
     return (
-      <div key={platform} style={{ marginBottom: 12 }}>
-        <Space style={{ marginBottom: 6 }} size={4}>
-          <Badge color={PLATFORM_COLORS[platform]} />
-          <Text strong style={{ fontSize: 13 }}>{PLATFORM_NAMES[platform]}</Text>
-          <Text type="secondary" style={{ fontSize: 11 }}>
-            ({data.official.length + data.others.length}家)
-          </Text>
-        </Space>
-        <div>
-          {data.official.map((p) => renderShopItem(p, true))}
-          {data.others.slice(0, 2).map((p) => renderShopItem(p, false))}
-          {data.others.length > 2 && (
-            <Text type="secondary" style={{ fontSize: 11, display: 'block', textAlign: 'center', marginTop: 4 }}>
-              +{data.others.length - 2} 家店铺
-            </Text>
-          )}
+      <div className="platform-section" key={platform}>
+        <div className="platform-header">
+          <span className={`platform-dot ${platform}`}></span>
+          <span className="platform-name">{PLATFORM_NAMES[platform]}</span>
+          <span className="platform-count">{data.official.length + data.others.length}家</span>
         </div>
+        {data.official.map((p) => renderShopItem(p, true))}
+        {data.others.slice(0, 3).map((p) => renderShopItem(p, false))}
+        {data.others.length > 3 && (
+          <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)', marginTop: 8 }}>
+            +{data.others.length - 3} 家店铺
+          </div>
+        )}
       </div>
     );
   };
 
   return (
-    <div style={{ padding: '12px 0' }}>
-      {/* 搜索栏 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Input.Search
-          size="large"
-          placeholder="输入商品名称..."
-          enterButton="搜索"
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          onSearch={handleSearch}
-        />
-      </Card>
+    <div>
+      {/* Search */}
+      <div style={{ marginBottom: 32 }}>
+        <div className="search-container">
+          <input
+            className="search-input"
+            placeholder="输入商品名称..."
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          />
+          <button className="search-btn" onClick={handleSearch}>
+            🔍 搜索
+          </button>
+        </div>
+      </div>
 
-      {/* 结果 */}
-      <Card
-        title={
-          <Space wrap>
-            <span>搜索结果</span>
-            {query && <Tag color="blue">{query}</Tag>}
-            <Text type="secondary">共 {matchGroups.length} 个商品</Text>
-          </Space>
-        }
-      >
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '60px 0' }}>
-            <Spin size="large" tip="正在搜索全网价格..." />
-          </div>
-        ) : matchGroups.length === 0 ? (
-          <Empty description="暂无搜索结果，换个关键词试试" />
-        ) : (
-          matchGroups.map((group) => (
-            <Card
-              key={group.spu_key}
-              type="inner"
-              style={{ marginBottom: 16 }}
-              title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-                  {group.image_url && (
-                    <img
-                      src={group.image_url}
-                      alt=""
-                      style={{ width: 36, height: 36, objectFit: 'contain', borderRadius: 4, flexShrink: 0 }}
-                    />
-                  )}
-                  <Text ellipsis style={{ fontSize: 14 }}>
-                    {group.title}
-                  </Text>
-                </div>
-              }
-              extra={
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <Text type="secondary" style={{ fontSize: 11 }}>最低价</Text>
-                  <div style={{ color: '#52c41a', fontWeight: 600, fontSize: 16 }}>
-                    ¥{group.best_price.coupon_price || group.best_price.current_price}
-                  </div>
-                </div>
-              }
-            >
-              {/* 桌面端：3列网格 */}
-              <div className="search-grid">
-                {(['jd', 'taobao', 'pdd'] as Platform[]).map((platform) =>
-                  renderPlatformSection(platform, group.platforms[platform])
-                )}
+      {/* Results */}
+      <div className="results-header">
+        <div className="results-title">
+          搜索结果
+          {query && <span className="query-tag">{query}</span>}
+        </div>
+        <span className="results-count">共 {matchGroups.length} 个商品</span>
+      </div>
+
+      {loading ? (
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <div className="loading-text">正在搜索全网价格...</div>
+        </div>
+      ) : matchGroups.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">🔍</div>
+          <div className="empty-text">暂无搜索结果，换个关键词试试</div>
+        </div>
+      ) : (
+        matchGroups.map((group, idx) => (
+          <div className="product-card" key={group.spu_key} style={{ animationDelay: `${idx * 50}ms` }}>
+            <div className="product-card-header">
+              {group.image_url && (
+                <img
+                  className="product-thumb"
+                  src={group.image_url}
+                  alt=""
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              )}
+              <div className="product-info">
+                <div className="product-title">{group.title}</div>
               </div>
-            </Card>
-          ))
-        )}
-      </Card>
+              <div className="product-best-price">
+                <div className="best-price-label">全网最低价</div>
+                <div className="best-price-value">
+                  ¥{group.best_price.coupon_price || group.best_price.current_price}
+                </div>
+              </div>
+            </div>
+            <div className="platforms-grid">
+              {(['jd', 'taobao', 'pdd'] as Platform[]).map((platform) =>
+                renderPlatformSection(platform, group.platforms[platform])
+              )}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }
