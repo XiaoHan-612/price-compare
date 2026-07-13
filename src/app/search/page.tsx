@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, Tag, Spin, Empty, Input, Typography, Space, Badge } from 'antd';
-import { ShopOutlined, StarFilled, ArrowUpOutlined, ArrowDownOutlined, MinusOutlined } from '@ant-design/icons';
+import { StarFilled } from '@ant-design/icons';
 import { MatchGroup, Platform, PLATFORM_NAMES, PLATFORM_COLORS, Product } from '@/types';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 export default function SearchPage() {
   const searchParams = useSearchParams();
@@ -59,24 +59,24 @@ export default function SearchPage() {
       onClick={() => router.push(`/product/${product.id}`)}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <Space size={4}>
-          {isOfficial && <StarFilled style={{ color: '#faad14' }} />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {isOfficial && <StarFilled style={{ color: '#faad14', fontSize: 12 }} />}
           <Text ellipsis style={{ fontSize: 13, fontWeight: isOfficial ? 600 : 400 }}>
             {product.shop_name || '未知店铺'}
           </Text>
-        </Space>
+        </div>
         {product.sales_count > 0 && (
-          <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+          <Text type="secondary" style={{ fontSize: 11 }}>
             月销 {product.sales_count > 10000 ? `${(product.sales_count / 10000).toFixed(1)}万` : product.sales_count}
           </Text>
         )}
       </div>
-      <div style={{ textAlign: 'right' }}>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
         <div style={{ color: '#f5222d', fontWeight: 600, fontSize: 15 }}>
           ¥{product.coupon_price || product.current_price || '--'}
         </div>
         {product.coupon_price && product.current_price && product.current_price > product.coupon_price && (
-          <Text delete type="secondary" style={{ fontSize: 12 }}>
+          <Text delete type="secondary" style={{ fontSize: 11 }}>
             ¥{product.current_price}
           </Text>
         )}
@@ -89,20 +89,20 @@ export default function SearchPage() {
     if (!hasData) return null;
 
     return (
-      <div key={platform} style={{ marginBottom: 16 }}>
-        <Space style={{ marginBottom: 8 }}>
+      <div key={platform} style={{ marginBottom: 12 }}>
+        <Space style={{ marginBottom: 6 }} size={4}>
           <Badge color={PLATFORM_COLORS[platform]} />
-          <Text strong>{PLATFORM_NAMES[platform]}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            ({data.official.length + data.others.length}家店铺)
+          <Text strong style={{ fontSize: 13 }}>{PLATFORM_NAMES[platform]}</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            ({data.official.length + data.others.length}家)
           </Text>
         </Space>
         <div>
           {data.official.map((p) => renderShopItem(p, true))}
-          {data.others.slice(0, 3).map((p) => renderShopItem(p, false))}
-          {data.others.length > 3 && (
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', textAlign: 'center', marginTop: 4 }}>
-              还有 {data.others.length - 3} 家店铺...
+          {data.others.slice(0, 2).map((p) => renderShopItem(p, false))}
+          {data.others.length > 2 && (
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', textAlign: 'center', marginTop: 4 }}>
+              +{data.others.length - 2} 家店铺
             </Text>
           )}
         </div>
@@ -111,9 +111,9 @@ export default function SearchPage() {
   };
 
   return (
-    <div style={{ padding: '24px 0' }}>
+    <div style={{ padding: '12px 0' }}>
       {/* 搜索栏 */}
-      <Card style={{ marginBottom: 24 }}>
+      <Card style={{ marginBottom: 16 }}>
         <Input.Search
           size="large"
           placeholder="输入商品名称..."
@@ -127,7 +127,7 @@ export default function SearchPage() {
       {/* 结果 */}
       <Card
         title={
-          <Space>
+          <Space wrap>
             <span>搜索结果</span>
             {query && <Tag color="blue">{query}</Tag>}
             <Text type="secondary">共 {matchGroups.length} 个商品</Text>
@@ -147,29 +147,30 @@ export default function SearchPage() {
               type="inner"
               style={{ marginBottom: 16 }}
               title={
-                <Space>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
                   {group.image_url && (
                     <img
                       src={group.image_url}
                       alt=""
-                      style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 4 }}
+                      style={{ width: 36, height: 36, objectFit: 'contain', borderRadius: 4, flexShrink: 0 }}
                     />
                   )}
-                  <Text ellipsis style={{ maxWidth: 500 }}>
+                  <Text ellipsis style={{ fontSize: 14 }}>
                     {group.title}
                   </Text>
-                </Space>
+                </div>
               }
               extra={
-                <Space>
-                  <Text type="secondary">最低价</Text>
-                  <Text strong style={{ color: '#52c41a', fontSize: 18 }}>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>最低价</Text>
+                  <div style={{ color: '#52c41a', fontWeight: 600, fontSize: 16 }}>
                     ¥{group.best_price.coupon_price || group.best_price.current_price}
-                  </Text>
-                </Space>
+                  </div>
+                </div>
               }
             >
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+              {/* 桌面端：3列网格 */}
+              <div className="search-grid">
                 {(['jd', 'taobao', 'pdd'] as Platform[]).map((platform) =>
                   renderPlatformSection(platform, group.platforms[platform])
                 )}
