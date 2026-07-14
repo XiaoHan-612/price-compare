@@ -7,20 +7,20 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const query = searchParams.get('q') || '';
 
-  if (!query) {
-    return NextResponse.json({ error: 'Missing query parameter' }, { status: 400 });
-  }
-
-  // 从 Supabase 搜索商品
+  // 从 Supabase 获取商品
   let allProducts: Product[] = [];
 
   if (supabaseAdmin) {
     try {
-      const { data, error } = await supabaseAdmin
-        .from('products')
-        .select('*')
-        .ilike('title', `%${query}%`)
-        .limit(50);
+      let queryBuilder = supabaseAdmin.from('products').select('*');
+
+      // 如果有搜索关键词，按标题搜索
+      if (query) {
+        queryBuilder = queryBuilder.ilike('title', `%${query}%`);
+      }
+
+      // 获取所有商品（最多 100 条）
+      const { data, error } = await queryBuilder.limit(100);
 
       if (data && !error) {
         allProducts = data.map((item: any) => ({
@@ -50,11 +50,6 @@ export async function GET(request: NextRequest) {
     } catch (err) {
       console.error('Supabase search failed:', err);
     }
-  }
-
-  // 如果 Supabase 没有数据，返回空结果
-  if (allProducts.length === 0) {
-    return NextResponse.json({ total: 0, items: [], cached: false, message: '暂无数据，请稍后再试' });
   }
 
   // 按平台分组
