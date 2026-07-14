@@ -2,9 +2,8 @@ name: 爬取电商价格
 
 on:
   schedule:
-    # 每 6 小时执行一次
     - cron: '0 */6 * * *'
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   scrape:
@@ -17,11 +16,16 @@ jobs:
       - name: 设置 Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+
+      - name: 安装 Playwright 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwoff1 libopus0 libwebpdemux2 libwebpmux3 libenchant-2-2 libgudev-1.0-0 libgdk-pixbuf2.0-0 libgtk-3-0 libharfbuzz0b libgstreamer1.0-0 libgstreamer-plugins-bad1.0-0 libevent-2.1-7 libvpx7 libx264-163 libxkbcommon0 libatspi2.0-0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libnspr4 libnss3
 
       - name: 安装依赖
         run: |
-          npm install
+          npm ci
           npm install playwright
           npx playwright install chromium
 
@@ -30,7 +34,3 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/scrape-all.js
-
-      - name: 完成
-        if: success()
-        run: echo "爬取完成"

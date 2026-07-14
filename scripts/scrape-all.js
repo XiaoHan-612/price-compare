@@ -5,6 +5,12 @@ const { scrapeJD, scrapeTaobao, scrapePDD } = require('./scrapers');
 // Supabase 配置
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('缺少环境变量: NEXT_PUBLIC_SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY');
+  process.exit(1);
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // 热门搜索词
@@ -14,18 +20,22 @@ async function main() {
   console.log('=== 开始爬取 ===');
   console.log('时间:', new Date().toISOString());
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  let browser;
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+  } catch (err) {
+    console.error('启动浏览器失败:', err.message);
+    process.exit(1);
+  }
 
   const allProducts = [];
 
   for (const keyword of KEYWORDS) {
     console.log(`\n搜索: ${keyword}`);
 
-    // 并行爬取三个平台
-    const page = await browser.newPage();
     const context = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     });
@@ -56,7 +66,7 @@ async function main() {
       await context.close();
     }
 
-    // 间隔 2 秒，避免被封
+    // 间隔 2 秒
     await new Promise((r) => setTimeout(r, 2000));
   }
 
@@ -66,12 +76,12 @@ async function main() {
 
   // 保存到 Supabase
   if (allProducts.length > 0) {
-    // 先清空旧数据
-    await supabase.from('products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    try {
+      // 先清空旧数据
+      await supabase.from('products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-    // 插入新数据
-    const { data, error } = await supabase.from('products').insert(
-      allProducts.map((p) => ({
+      // 插入新数据
+      const insertData = allProducts.map((p) => ({
         title: p.title,
         image_url: p.image,
         source_platform: p.platform,
@@ -83,15 +93,24 @@ async function main() {
         current_price: p.price,
         normalized_name: p.title.toLowerCase(),
         price_update_at: new Date().toISOString(),
-      }))
-    );
+      }));
 
-    if (error) {
-      console.error('保存到 Supabase 失败:', error);
-    } else {
-      console.log('数据已保存到 Supabase');
+      const { data, error } = await supabase.from('products').insert(insertData);
+
+      if (error) {
+        console.error('保存到 Supabase 失败:', error);
+      } else {
+        console.log(`成功保存 ${insertData.length} 条数据到 Supabase`);
+      }
+    } catch (err) {
+      console.error('Supabase 操作失败:', err.message);
     }
+  } else {
+    console.log('没有爬取到数据');
   }
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error('程序异常:', err);
+  process.exit(1);
+});

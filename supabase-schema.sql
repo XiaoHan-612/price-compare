@@ -39,29 +39,20 @@ CREATE TABLE IF NOT EXISTS price_history (
 
 CREATE INDEX IF NOT EXISTS idx_price_history_product ON price_history(product_id, recorded_at DESC);
 
--- 3. 搜索缓存表
-CREATE TABLE IF NOT EXISTS search_cache (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    query TEXT NOT NULL UNIQUE,
-    results JSONB NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '1 hour'
-);
-
-CREATE INDEX IF NOT EXISTS idx_search_cache_query ON search_cache(query, expires_at);
+-- 3. 删除旧策略（如果存在）
+DROP POLICY IF EXISTS "Allow public read products" ON products;
+DROP POLICY IF EXISTS "Allow public read price_history" ON price_history;
+DROP POLICY IF EXISTS "Allow public read search_cache" ON search_cache;
+DROP POLICY IF EXISTS "Allow service role all products" ON products;
+DROP POLICY IF EXISTS "Allow service role all price_history" ON price_history;
+DROP POLICY IF EXISTS "Allow service role all search_cache" ON search_cache;
 
 -- 4. 启用 RLS
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE price_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE search_cache ENABLE ROW LEVEL SECURITY;
 
 -- 5. 创建访问策略
 CREATE POLICY "Allow public read products" ON products FOR SELECT USING (true);
 CREATE POLICY "Allow public read price_history" ON price_history FOR SELECT USING (true);
-CREATE POLICY "Allow public read search_cache" ON search_cache FOR SELECT USING (true);
 CREATE POLICY "Allow service role all products" ON products FOR ALL USING (true);
 CREATE POLICY "Allow service role all price_history" ON price_history FOR ALL USING (true);
-CREATE POLICY "Allow service role all search_cache" ON search_cache FOR ALL USING (true);
-
--- 6. 全文搜索索引
-CREATE INDEX IF NOT EXISTS idx_products_title ON products USING GIN(to_tsvector('simple', title));
