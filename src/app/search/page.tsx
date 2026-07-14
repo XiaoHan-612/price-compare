@@ -1,46 +1,134 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { MatchGroup, Platform, PLATFORM_NAMES, Product } from '@/types';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { MatchGroup, Platform, PLATFORM_NAMES, PLATFORM_COLORS, Product } from '@/types';
+
+// CORS 代理服务
+const CORS_PROXIES = [
+  'https://api.allorigins.win/raw?url=',
+  'https://corsproxy.io/?',
+];
+
+async function fetchWithProxy(url: string): Promise<string> {
+  for (const proxy of CORS_PROXIES) {
+    try {
+      const res = await fetch(proxy + encodeURIComponent(url));
+      if (res.ok) return await res.text();
+    } catch (e) {
+      continue;
+    }
+  }
+  throw new Error('All proxies failed');
+}
+
+// 京东搜索
+async function searchJD(keyword: string): Promise<any[]> {
+  try {
+    const url = `https://api.m.jd.com/client.action?functionId=search&body=${encodeURIComponent(JSON.stringify({ keyword, page: 1, pagesize: 20 }))}&appid=wh5`;
+    const text = await fetchWithProxy(url);
+    const data = JSON.parse(text);
+    if (data?.data?.searchResult) {
+      return data.data.searchResult.map((item: any) => ({
+        title: item.wname || item.name || '',
+        price: parseFloat(item.price || '0'),
+        image: item.imageurl || '',
+        shop: item.shopName || '',
+        source_id: item.wareId || item.skuId || '',
+        source_url: `https://item.jd.com/${item.wareId || item.skuId}.html`,
+        platform: 'jd',
+        is_official: (item.shopName || '').includes('自营') || (item.shopName || '').includes('官方'),
+        sales: item.commCount || 0,
+      }));
+    }
+  } catch (e) {
+    console.error('JD search failed:', e);
+  }
+  return [];
+}
+
+// 淘宝搜索
+async function searchTaobao(keyword: string): Promise<any[]> {
+  try {
+    const url = `https://s.m.taobao.com/h5?q=${encodeURIComponent(keyword)}`;
+    const text = await fetchWithProxy(url);
+    const match = text.match(/g_page_config\s*=\s*(\{[\s\S]*?\});/);
+    if (match) {
+      const config = JSON.parse(match[1]);
+      const items = config?.mods?.itemlist?.data?.auctions || [];
+      return items.slice(0, 20).map((item: any) => ({
+        title: (item.title || '').replace(/<[^>]+>/g, ''),
+        price: parseFloat(item.view_price || '0'),
+        image: item.pic_url ? `https:${item.pic_url}` : '',
+        shop: item.nick || '',
+        source_id: item.nid || '',
+        source_url: `https://item.taobao.com/item.htm?id=${item.nid}`,
+        platform: 'taobao',
+        is_official: (item.nick || '').includes('官方') || (item.nick || '').includes('旗舰'),
+        sales: parseInt((item.view_sales || '').replace(/[^0-9]/g, '')) || 0,
+      }));
+    }
+  } catch (e) {
+    console.error('Taobao search failed:', e);
+  }
+  return [];
+}
+
+// 拼多多搜索
+async function searchPDD(keyword: string): Promise<any[]> {
+  try {
+    const url = `https://mobile.yangkeduo.com/search_result.html?search_key=${encodeURIComponent(keyword)}`;
+    const text = await fetchWithProxy(url);
+    const match = text.match(/window\.rawData\s*=\s*(\{[\s\S]*?\});/);
+    if (match) {
+      const data = JSON.parse(match[1]);
+      const items = data?.store?.goods || [];
+      return items.slice(0, 20).map((item: any) => ({
+        title: item.goods_name || '',
+        price: (item.min_group_price || 0) / 100,
+        image: item.hd_thumb_url || item.thumb_url || '',
+        shop: item.mall_name || '',
+        source_id: String(item.goods_id || ''),
+        source_url: `https://mobile.yangkeduo.com/goods.html?goods_id=${item.goods_id}`,
+        platform: 'pdd',
+        is_official: (item.mall_name || '').includes('官方') || (item.mall_name || '').includes('旗舰'),
+        sales: parseInt((item.sales_tip || '').replace(/[^0-9]/g, '')) || 0,
+      }));
+    }
+  } catch (e) {
+    console.error('PDD search failed:', e);
+  }
+  return [];
+}
 
 export default function SearchPage() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const query = searchParams.get('q') || '';
-  const [keyword, setKeyword] = useState(query);
-  const [matchGroups, setMatchGroups] = useState<MatchGroup[]>([]);
+  const [keyword, setKeyword] = useState('');
+  const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({ jd: 0, taobao: 0, pdd: 0 });
 
-  useEffect(() => {
-    if (query) {
-      setKeyword(query);
-      searchProducts(query);
-    } else {
-      // 没有搜索词时显示所有商品
-      searchProducts('');
-    }
-  }, [query]);
-
-  const searchProducts = async (q: string) => {
+  const handleSearch = async () => {
+    if (!keyword.trim()) return;
     setLoading(true);
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
-      setMatchGroups(data.items || []);
-    } catch (err) {
-      console.error('Search failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setResults([]);
 
-  const handleSearch = () => {
-    if (keyword.trim()) {
-      router.push(`/search?q=${encodeURIComponent(keyword.trim())}`);
-    } else {
-      router.push('/search');
-    }
+    const [jd, taobao, pdd] = await Promise.allSettled([
+      searchJD(keyword),
+      searchTaobao(keyword),
+      searchPDD(keyword),
+    ]);
+
+    const jdResults = jd.status === 'fulfilled' ? jd.value : [];
+    const taobaoResults = taobao.status === 'fulfilled' ? taobao.value : [];
+    const pddResults = pdd.status === 'fulfilled' ? pdd.value : [];
+
+    setStats({ jd: jdResults.length, taobao: taobaoResults.length, pdd: pddResults.length });
+
+    // 合并所有结果
+    const all = [...jdResults, ...taobaoResults, ...pddResults];
+    setResults(all);
+    setLoading(false);
   };
 
   const formatSales = (count: number) => {
@@ -49,121 +137,113 @@ export default function SearchPage() {
     return count.toString();
   };
 
-  const renderShopItem = (product: Product, isOfficial: boolean) => (
-    <div
-      key={product.id}
-      className={`shop-item ${isOfficial ? 'official' : ''}`}
-      onClick={() => router.push(`/product/${product.id}`)}
-    >
-      <div className="shop-name">
-        {isOfficial && <span className="star">⭐</span>}
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {product.shop_name || '未知店铺'}
-        </span>
-        {product.sales_count > 0 && (
-          <span className="shop-sales">月销{formatSales(product.sales_count)}</span>
-        )}
-      </div>
-      <div className="shop-price">
-        <div className="shop-price-main">¥{product.coupon_price || product.current_price || '--'}</div>
-        {product.coupon_price && product.current_price && product.current_price > product.coupon_price && (
-          <div className="shop-price-original">¥{product.current_price}</div>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderPlatformSection = (platform: Platform, data: { official: Product[]; others: Product[] }) => {
-    const hasData = data.official.length > 0 || data.others.length > 0;
-    if (!hasData) return null;
-
-    return (
-      <div className="platform-section" key={platform}>
-        <div className="platform-header">
-          <span className={`platform-dot ${platform}`}></span>
-          <span className="platform-name">{PLATFORM_NAMES[platform]}</span>
-          <span className="platform-count">{data.official.length + data.others.length}家</span>
-        </div>
-        {data.official.map((p) => renderShopItem(p, true))}
-        {data.others.slice(0, 3).map((p) => renderShopItem(p, false))}
-        {data.others.length > 3 && (
-          <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)', marginTop: 8 }}>
-            +{data.others.length - 3} 家店铺
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
-    <div>
-      {/* Search */}
-      <div style={{ marginBottom: 32 }}>
+    <div style={{ padding: '12px 0' }}>
+      {/* 搜索栏 */}
+      <div style={{ marginBottom: 24 }}>
         <div className="search-container">
           <input
             className="search-input"
-            placeholder="输入商品名称..."
+            placeholder="输入商品名称，如 iPhone 15、茅台、戴森..."
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
           <button className="search-btn" onClick={handleSearch}>
-            🔍 搜索
+            🔍 搜索比价
           </button>
         </div>
       </div>
 
-      {/* Results */}
-      <div className="results-header">
-        <div className="results-title">
-          搜索结果
-          {query && <span className="query-tag">{query}</span>}
+      {/* 搜索统计 */}
+      {stats.jd + stats.taobao + stats.pdd > 0 && (
+        <div style={{ marginBottom: 16, fontSize: 14, color: '#666' }}>
+          搜索结果：京东 {stats.jd} 条 · 淘宝 {stats.taobao} 条 · 拼多多 {stats.pdd} 条
         </div>
-        <span className="results-count">共 {matchGroups.length} 个商品</span>
-      </div>
+      )}
 
-      {loading ? (
+      {/* 加载状态 */}
+      {loading && (
         <div className="loading-container">
           <div className="loading-spinner"></div>
           <div className="loading-text">正在搜索全网价格...</div>
         </div>
-      ) : matchGroups.length === 0 ? (
+      )}
+
+      {/* 搜索结果 */}
+      {!loading && results.length === 0 && keyword && (
         <div className="empty-state">
           <div className="empty-icon">🔍</div>
           <div className="empty-text">暂无搜索结果，换个关键词试试</div>
         </div>
-      ) : (
-        matchGroups.map((group, idx) => (
-          <div className="product-card" key={group.spu_key} style={{ animationDelay: `${idx * 50}ms` }}>
-            <div className="product-card-header">
-              {group.image_url && (
+      )}
+
+      {/* 商品列表 */}
+      <div style={{ display: 'grid', gap: 16 }}>
+        {results.map((item, idx) => (
+          <div
+            key={`${item.platform}_${item.source_id}_${idx}`}
+            className="product-card"
+            style={{ cursor: 'pointer' }}
+            onClick={() => window.open(item.source_url, '_blank')}
+          >
+            <div style={{ display: 'flex', gap: 16, padding: 16 }}>
+              {item.image && (
                 <img
-                  className="product-thumb"
-                  src={group.image_url}
-                  alt=""
+                  src={item.image}
+                  alt={item.title}
+                  style={{ width: 80, height: 80, objectFit: 'contain', borderRadius: 8, background: '#fafafa' }}
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none';
                   }}
                 />
               )}
-              <div className="product-info">
-                <div className="product-title">{group.title}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {item.title}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: 'white',
+                      background: PLATFORM_COLORS[item.platform as Platform] || '#999',
+                    }}
+                  >
+                    {PLATFORM_NAMES[item.platform as Platform] || item.platform}
+                  </span>
+                  {item.is_official && (
+                    <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 12, background: '#fffbeb', color: '#b45309' }}>
+                      ⭐ 官方
+                    </span>
+                  )}
+                  {item.shop && (
+                    <span style={{ fontSize: 12, color: '#666' }}>
+                      {item.shop}
+                    </span>
+                  )}
+                  {item.sales > 0 && (
+                    <span style={{ fontSize: 12, color: '#999' }}>
+                      月销{formatSales(item.sales)}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="product-best-price">
-                <div className="best-price-label">全网最低价</div>
-                <div className="best-price-value">
-                  ¥{group.best_price.coupon_price || group.best_price.current_price}
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 20, fontWeight: 600, color: '#f5222d' }}>
+                  ¥{item.price || '--'}
+                </div>
+                <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                  查看详情 →
                 </div>
               </div>
             </div>
-            <div className="platforms-grid">
-              {(['jd', 'taobao', 'pdd'] as Platform[]).map((platform) =>
-                renderPlatformSection(platform, group.platforms[platform])
-              )}
-            </div>
           </div>
-        ))
-      )}
+        ))}
+      </div>
     </div>
   );
 }
