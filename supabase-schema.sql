@@ -50,20 +50,18 @@ CREATE TABLE IF NOT EXISTS search_cache (
 
 CREATE INDEX IF NOT EXISTS idx_search_cache_query ON search_cache(query, expires_at);
 
--- 4. 启用 RLS（行级安全策略）
+-- 4. 启用 RLS
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE price_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE search_cache ENABLE ROW LEVEL SECURITY;
 
--- 5. 创建公开访问策略（允许匿名读取）
+-- 5. 创建访问策略
 CREATE POLICY "Allow public read products" ON products FOR SELECT USING (true);
 CREATE POLICY "Allow public read price_history" ON price_history FOR SELECT USING (true);
 CREATE POLICY "Allow public read search_cache" ON search_cache FOR SELECT USING (true);
+CREATE POLICY "Allow service role all products" ON products FOR ALL USING (true);
+CREATE POLICY "Allow service role all price_history" ON price_history FOR ALL USING (true);
+CREATE POLICY "Allow service role all search_cache" ON search_cache FOR ALL USING (true);
 
--- 6. 创建服务端写入策略（使用 service_role key）
-CREATE POLICY "Allow service role insert products" ON products FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow service role update products" ON products FOR UPDATE USING (true);
-CREATE POLICY "Allow service role insert price_history" ON price_history FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow service role insert search_cache" ON search_cache FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow service role update search_cache" ON search_cache FOR UPDATE USING (true);
-CREATE POLICY "Allow service role delete search_cache" ON search_cache FOR DELETE USING (true);
+-- 6. 全文搜索索引
+CREATE INDEX IF NOT EXISTS idx_products_title ON products USING GIN(to_tsvector('simple', title));

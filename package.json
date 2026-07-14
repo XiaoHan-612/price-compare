@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "scrape": "node scripts/scrape-all.js"
   },
   "dependencies": {
     "@ant-design/icons": "^5.3.0",

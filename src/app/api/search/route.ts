@@ -1,36 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchJD, formatJDProduct } from '@/lib/platforms/jd';
+import { supabaseAdmin } from '@/lib/supabase';
 import { matchProducts } from '@/lib/matcher';
-import { getCachedResults, setCachedResults } from '@/lib/cache';
 import { Product, Platform } from '@/types';
-
-function makeProduct(overrides: Partial<Product>): Product {
-  const now = new Date().toISOString();
-  return {
-    id: '',
-    title: '',
-    image_url: null,
-    brand: null,
-    source_platform: 'jd',
-    source_id: '',
-    source_url: '#',
-    shop_name: null,
-    shop_url: null,
-    is_official: false,
-    sales_count: 0,
-    current_price: 0,
-    original_price: null,
-    coupon_price: null,
-    lowest_price: null,
-    highest_price: null,
-    price_update_at: now,
-    created_at: now,
-    updated_at: now,
-    normalized_name: '',
-    category: null,
-    ...overrides,
-  };
-}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -40,41 +11,53 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing query parameter' }, { status: 400 });
   }
 
-  const cached = await getCachedResults(query);
-  if (cached) {
-    return NextResponse.json({ total: cached.length, items: cached, cached: true });
-  }
-
-  // 调用京东联盟 API
+  // 从 Supabase 搜索商品
   let allProducts: Product[] = [];
-  try {
-    const jdResult = await searchJD(query, 1, 20);
-    for (const item of jdResult.items) {
-      const formatted = formatJDProduct(item);
-      allProducts.push(makeProduct({
-        title: formatted.title,
-        image_url: formatted.image_url,
-        brand: formatted.brand,
-        source_platform: 'jd',
-        source_id: formatted.source_id,
-        source_url: formatted.source_url,
-        shop_name: formatted.shop_name,
-        shop_url: formatted.shop_url,
-        is_official: formatted.is_official,
-        sales_count: formatted.sales_count,
-        current_price: formatted.price,
-        original_price: formatted.original_price,
-        coupon_price: formatted.coupon_price,
-        lowest_price: formatted.price,
-        highest_price: formatted.original_price,
-        normalized_name: query.toLowerCase(),
-        category: formatted.category,
-      }));
+
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('products')
+        .select('*')
+        .ilike('title', `%${query}%`)
+        .limit(50);
+
+      if (data && !error) {
+        allProducts = data.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          image_url: item.image_url,
+          brand: item.brand,
+          normalized_name: item.normalized_name || item.title.toLowerCase(),
+          source_platform: item.source_platform as Platform,
+          source_id: item.source_id,
+          source_url: item.source_url,
+          shop_name: item.shop_name,
+          shop_url: item.shop_url,
+          is_official: item.is_official || false,
+          sales_count: item.sales_count || 0,
+          current_price: item.current_price,
+          original_price: item.original_price,
+          coupon_price: item.coupon_price,
+          lowest_price: item.lowest_price || item.current_price,
+          highest_price: item.highest_price || item.current_price,
+          price_update_at: item.price_update_at,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          category: item.category,
+        }));
+      }
+    } catch (err) {
+      console.error('Supabase search failed:', err);
     }
-  } catch (err) {
-    console.error('Search failed:', err);
   }
 
+  // 如果 Supabase 没有数据，返回空结果
+  if (allProducts.length === 0) {
+    return NextResponse.json({ total: 0, items: [], cached: false, message: '暂无数据，请稍后再试' });
+  }
+
+  // 按平台分组
   const resultsMap = new Map<Platform, any[]>();
   for (const product of allProducts) {
     const existing = resultsMap.get(product.source_platform) || [];
@@ -95,11 +78,8 @@ export async function GET(request: NextRequest) {
     resultsMap.set(product.source_platform, existing);
   }
 
+  // 跨平台匹配
   const matchGroups = matchProducts(resultsMap);
-
-  if (matchGroups.length > 0) {
-    await setCachedResults(query, matchGroups);
-  }
 
   return NextResponse.json({ total: matchGroups.length, items: matchGroups, cached: false });
 }
