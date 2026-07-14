@@ -1,117 +1,115 @@
-const { chromium } = require('playwright');
+const CryptoJS = require('crypto-js');
 const { createClient } = require('@supabase/supabase-js');
 
+const JD_API_URL = 'https://router.jd.com/api';
+const APP_KEY = process.env.JD_APP_KEY;
+const SECRET_KEY = process.env.JD_SECRET_KEY;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseKey) {
+if (!APP_KEY || !SECRET_KEY || !supabaseUrl || !supabaseKey) {
   console.error('缺少环境变量');
   process.exit(1);
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const KEYWORDS = ['iPhone 15', '茅台', '戴森', 'MacBook', 'AirPods', 'Switch'];
+function sign(params) {
+  const sortedKeys = Object.keys(params).sort();
+  let str = SECRET_KEY;
+  for (const key of sortedKeys) {
+    str += key + params[key];
+  }
+  str += SECRET_KEY;
+  return CryptoJS.MD5(str).toString().toUpperCase();
+}
 
-async function scrapeJD(keyword, page) {
-  const products = [];
+async function searchJD(keyword, page = 1) {
+  const params = {
+    method: 'jd.union.open.goods.material.query',
+    app_key: APP_KEY,
+    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    format: 'json',
+    v: '1.0',
+    sign_method: 'md5',
+    param_json: JSON.stringify({
+      goodsReq: {
+        eliteId: 1,
+        keyword,
+        pageIndex: page,
+        pageSize: 10,
+      },
+    }),
+  };
+  params.sign = sign(params);
+
+  const url = `${JD_API_URL}?${new URLSearchParams(params).toString()}`;
+  const res = await fetch(url);
+  const text = await res.text();
+
   try {
-    await page.goto(`https://search.jd.com/Search?keyword=${encodeURIComponent(keyword)}&enc=utf-8`, {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000,
-    });
-    await page.waitForTimeout(3000);
-
-    const items = await page.$$eval('.gl-item', (nodes) => {
-      return nodes.slice(0, 8).map((node) => {
-        const titleEl = node.querySelector('.p-name a em');
-        const priceEl = node.querySelector('.p-price strong i');
-        const imgEl = node.querySelector('.p-img img');
-        const shopEl = node.querySelector('.p-shop a');
-        const linkEl = node.querySelector('.p-name a');
-
-        return {
-          title: titleEl?.textContent?.trim() || '',
-          price: parseFloat(priceEl?.textContent || '0'),
-          image: imgEl?.getAttribute('data-lazy-img') || imgEl?.src || '',
-          shop: shopEl?.textContent?.trim() || '',
-          url: linkEl?.href || '',
-        };
-      });
-    });
-
-    for (const item of items) {
-      if (item.title && item.price > 0) {
-        const skuMatch = item.url.match(/\/(\d+)\.html/);
-        products.push({
-          title: item.title,
-          price: item.price,
-          image: item.image.startsWith('//') ? `https:${item.image}` : item.image,
-          shop_name: item.shop,
-          source_id: skuMatch?.[1] || String(Math.random()),
-          source_url: item.url || `https://search.jd.com/Search?keyword=${keyword}`,
-          platform: 'jd',
-          is_official: item.shop.includes('自营') || item.shop.includes('官方'),
-        });
-      }
+    const data = JSON.parse(text);
+    const responseKey = 'jd_union_open_goods_material_query_response';
+    if (data[responseKey]) {
+      const result = JSON.parse(data[responseKey].result);
+      return result.data || [];
     }
   } catch (err) {
-    console.error(`JD error for ${keyword}:`, err.message);
+    console.error('Parse error:', err.message);
   }
-  return products;
+  return [];
 }
 
 async function main() {
-  console.log('=== 开始爬取京东 ===');
+  console.log('=== 使用京东联盟 API 获取数据 ===');
   console.log('时间:', new Date().toISOString());
 
-  const browser = await chromium.launch({ headless: true });
+  const KEYWORDS = ['iPhone 15', '茅台', '戴森', 'MacBook', 'AirPods', 'Switch', '显卡', '机械键盘'];
   const allProducts = [];
 
   for (const keyword of KEYWORDS) {
     console.log(`搜索: ${keyword}`);
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    });
-    const page = await context.newPage();
-
     try {
-      const results = await scrapeJD(keyword, page);
-      console.log(`  京东: ${results.length} 条`);
-      allProducts.push(...results);
+      const items = await searchJD(keyword);
+      console.log(`  京东: ${items.length} 条`);
+
+      for (const item of items) {
+        const price = parseFloat(item.priceInfo?.price || '0');
+        const shopName = item.shopInfo?.shopName || '';
+        const imageUrl = item.imageInfo?.imageList?.[0]?.url || '';
+
+        if (price > 0) {
+          allProducts.push({
+            title: item.skuName || '',
+            image_url: imageUrl,
+            source_platform: 'jd',
+            source_id: String(item.skuId || item.itemId || ''),
+            source_url: `https://item.jd.com/${item.skuId || item.itemId}.html`,
+            shop_name: shopName,
+            is_official: shopName.includes('自营') || shopName.includes('官方'),
+            sales_count: item.inOrderCount30Days || 0,
+            current_price: price,
+            normalized_name: (item.skuName || '').toLowerCase(),
+            price_update_at: new Date().toISOString(),
+          });
+        }
+      }
     } catch (err) {
       console.error(`  失败:`, err.message);
     }
-
-    await context.close();
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 1000));
   }
 
-  await browser.close();
-  console.log(`\n共爬取 ${allProducts.length} 条数据`);
+  console.log(`\n共获取 ${allProducts.length} 条数据`);
 
   if (allProducts.length > 0) {
     await supabase.from('products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-    const { error } = await supabase.from('products').insert(
-      allProducts.map((p) => ({
-        title: p.title,
-        image_url: p.image,
-        source_platform: p.platform,
-        source_id: p.source_id,
-        source_url: p.source_url,
-        shop_name: p.shop_name,
-        is_official: p.is_official,
-        current_price: p.price,
-        normalized_name: p.title.toLowerCase(),
-        price_update_at: new Date().toISOString(),
-      }))
-    );
-
+    const { error } = await supabase.from('products').insert(allProducts);
     if (error) {
       console.error('保存失败:', error);
     } else {
-      console.log('保存成功');
+      console.log(`成功保存 ${allProducts.length} 条数据`);
     }
   }
 }
