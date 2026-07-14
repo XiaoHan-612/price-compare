@@ -16,6 +16,9 @@ export default function SearchPage() {
     if (query) {
       setKeyword(query);
       searchProducts(query);
+    } else {
+      // 没有搜索词时显示所有商品
+      searchProducts('');
     }
   }, [query]);
 
@@ -35,6 +38,8 @@ export default function SearchPage() {
   const handleSearch = () => {
     if (keyword.trim()) {
       router.push(`/search?q=${encodeURIComponent(keyword.trim())}`);
+    } else {
+      router.push('/search');
     }
   };
 
