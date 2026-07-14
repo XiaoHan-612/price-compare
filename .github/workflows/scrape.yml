@@ -18,16 +18,11 @@ jobs:
         with:
           node-version: '22'
 
-      - name: 安装 Playwright 系统依赖
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwoff1 libopus0 libwebpdemux2 libwebpmux3 libenchant-2-2 libgudev-1.0-0 libgdk-pixbuf2.0-0 libgtk-3-0 libharfbuzz0b libgstreamer1.0-0 libgstreamer-plugins-bad1.0-0 libevent-2.1-7 libvpx7 libx264-163 libxkbcommon0 libatspi2.0-0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libnspr4 libnss3
-
       - name: 安装依赖
-        run: |
-          npm ci
-          npm install playwright
-          npx playwright install chromium
+        run: npm ci
+
+      - name: 安装 Playwright
+        uses: microsoft/playwright-github-action@v1
 
       - name: 运行爬虫
         env:
